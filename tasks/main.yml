@@ -1,0 +1,79 @@
+---
+# tasks file for keepalived
+- name: install keepalived packages
+  ansible.builtin.package:
+    name: "{{ keepalived_package_name }}"
+    state: "{{ keepalived_package_state }}"
+    update_cache: yes
+    cache_valid_time: "{{ (ansible_facts['pkg_mgr'] == 'apt') | ternary(cache_timeout, omit) }}"
+  notify:
+    - restart keepalived
+  tags:
+    - keepalived-packages
+    - keepalived-install
+
+- name: Output keepalived version
+  ansible.builtin.command: keepalived --version
+  register: _keepalived_version
+  changed_when: false
+  check_mode: no
+  tags:
+    - keepalived-config
+
+- name: Allow consuming apps to bind on non local addresses for IPv4
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_set: yes
+    state: present
+  when: keepalived_bind_on_non_local | bool
+  loop:
+    - name: "net.ipv4.ip_nonlocal_bind"
+      value: 1
+    - name: "net.ipv4.tcp_retries2"
+      value: "{{ keepalived_sysctl_tcp_retries }}"
+  notify:
+    - restart keepalived
+  tags:
+    - keepalived-install
+
+- name: Check that daemon options file exists
+  ansible.builtin.stat:
+    path: "{{ _keepalived_daemon_options_file_path }}"
+  register: keepalived_daemon_options_file
+  tags:
+    - keepalived-config
+
+- name: Define vrrp nic
+  ansible.builtin.set_fact:
+    vrrp_nic: "{{ ansible_facts['default_ipv4']['interface'] }}"
+
+- name: Set testability flag
+  ansible.builtin.set_fact:
+    keepalived_config_testable: "{{ _keepalived_version.stderr_lines[0] | regex_search('[kK]eepalived v(.*) ', '\\1') | join('.') is version('2.0.4','ge') }}"
+  tags:
+    - keepalived-config
+
+- name: Configure keepalived
+  ansible.builtin.template:
+    src: keepalived.conf.j2
+    dest: "{{ keepalived_config_file_path }}"
+    # dest: "/tmp/test.conf"
+    mode: "0640"
+    validate: "{{ keepalived_config_testable | ternary('keepalived --config-test -f %s', omit) }}"
+  notify:
+    # - restart keepalived
+    - reload keepalived
+  tags:
+    - keepalived-config
+
+- name: Ensuring keepalived is enabled and started
+  ansible.builtin.service:
+    daemon_reload: yes
+    name: "{{ keepalived_service_name }}"
+    state: "started"
+    enabled: "yes"
+    masked: "no"
+  register: _servicestart
+  tags:
+    - keepalived-install

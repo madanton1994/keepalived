@@ -1,0 +1,20 @@
+keepalived_show_ansible_managed: true
+keepalived_selinux_compile_rules:
+  - keepalived_ping
+  - keepalived_setpgid
+
+keepalived_package_state: "{{ ( (keepalived_use_latest_stable | default(true)) | bool) | ternary('latest','present') }}"
+keepalived_scripts: {}
+
+keepalived_scripts_packages: []
+
+cache_timeout: 600
+
+keepalived_instances: {}
+keepalived_sync_groups: {}
+keepalived_bind_on_non_local: False
+keepalived_sysctl_tcp_retries: 8
+keepalived_systemd_overrides: True
+keepalived_systemd_override_service_restart: False
+keepalived_daemon_options_file_path: "{{ _keepalived_daemon_options_file_path }}"
+keepalived_daemon_default_options_overrides: []
